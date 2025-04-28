@@ -1,0 +1,29 @@
+defaults:
+  - _self_
+
+hydra:
+  run:
+    dir: output/${hydra.job.name}_${now:%Y-%m-%d_%H-%M-%S}
+
+luid:
+  rho: 1.0          # Fluid density [kg/m³]
+  mu: 0.05          # Dynamic viscosity [Pa·s]
+
+time:
+  dt: 0.1           # Time step size [s]
+  t_end: 10.0       # Final simulation time [s]
+
+mesh:
+  filename: "mesh/cylinder_p2.msh"  # Path to GMSH mesh file
+  quad_deg: 4       # Quadrature degree for numerical integration
+
+generalized_alpha:
+  specRad: 0.0      # Spectral radius for generalized-alpha method (0: implicit Newmark)
+
+solver:
+  rtol: 1e-8        # Relative tolerance for Newton solver
+  atol: 1e-8        # Absolute tolerance for Newton solver
+  max_it: 50        # Maximum iterations for Newton solver
+
+output:
+  path: "./results" # Directory to store VTK results and force data
