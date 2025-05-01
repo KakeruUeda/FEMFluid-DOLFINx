@@ -2,6 +2,9 @@ bin/
 build/
 
 input/
+output/
+
+inputs/
 outputs/
 
 *.vtu
