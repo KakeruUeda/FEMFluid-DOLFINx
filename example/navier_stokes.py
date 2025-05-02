@@ -66,7 +66,6 @@ from dataclasses import dataclass
 from hydra.utils import to_absolute_path
 from pathlib import Path
 
-# femfluid/solver.py
 import logging
 
 import src.domain as domain_
@@ -147,7 +146,7 @@ def main(cfg: DictConfig) -> None:
         print("\n\n Load step = ", step)
         print("     Time      = ", time_now)
 
-        # solvet the equations.
+        # solve the equations.
         ns.solve_intermidiate()
         ns.solve_poisson()
         ns.solve_correction()

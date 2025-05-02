@@ -2,6 +2,8 @@ defaults:
   - _self_
 
 hydra:
+  job:
+    name: straight_tube
   run:
     dir: output/${hydra.job.name}_${now:%Y-%m-%d_%H-%M-%S}
 
@@ -9,32 +11,55 @@ base:
   dim: 2
 
 fluid:
-  Re: 200.0
+  Re: 100.0
 
 time:
   dt: 0.01
-  t_end: 50
+  t_end: 10
 
 mesh:
-  filepath: mesh/cylinder_p2.msh  # Path to GMSH file
+  filepath: mesh/straight_tube_p2.msh  # Path to GMSH file
   deg_u: 2
   deg_p: 1
 
 boundary:
   dirichlet:
     velocity:  # [tag, type, dir, value]
+      # ---- cavity ----
       # - [9, "uniform", 0, 1.0]
       # - [9, "uniform", 1, 0.0]
       # - [10, "uniform", 0, 0.0]   
       # - [10, "uniform", 1, 0.0]
-      - [1, "uniform", 0, 1.0]
-      - [1, "uniform", 1, 0.0]
-      - [3, "uniform", 1, 0.0]   
-      - [4, "uniform", 1, 0.0]
-      - [5, "uniform", 0, 0.0]
-      - [5, "uniform", 1, 0.0]
+
+      # ---- cylinder ----
+      # - [1, "poiseuille", 0, 1.0]
+      # - [1, "uniform", 1, 0.0]
+      # - [3, "uniform", 1, 0.0]   
+      # - [4, "uniform", 1, 0.0]
+      # - [5, "uniform", 0, 0.0]
+      # - [5, "uniform", 1, 0.0]
+
+      # ---- straight tube ----
+      - [6, "uniform", 0, 0.0]
+      - [6, "uniform", 1, 1.0]
+      - [7, "uniform", 0, 0.0]
+      - [7, "uniform", 1, 0.0]
+    poiseuille:
+      # ---- cylinder ----
+      # radius: 10
+      # center: [-10.0, 0.0]
+      # normal: [1.0, 0.0]
+
+      # ---- straight tube ----
+      radius: 0.5
+      center: [1.0, 0.0]
+      normal: [0.0, 1.0]
     pressure:
-      - [2, 0.0]
+      # ---- cylinder ----
+      # - [2, 0.0]
+
+      # ---- straight tube ----
+      - [8, 0.0]
 
 solver:
   output_interval: 10

@@ -81,7 +81,7 @@ def define_functionspace(domain):
         domain.msh, element(
             "Lagrange", 
             domain.msh.basix_cell(), 
-            domain.deg_u, 
+            domain.deg_u,
             shape=(domain.msh.geometry.dim,)
         )
     )

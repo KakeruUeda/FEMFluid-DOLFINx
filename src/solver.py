@@ -8,7 +8,8 @@ from petsc4py import PETSc
 
 from dolfinx import (
     fem, 
-    mesh
+    mesh,
+    default_scalar_type
 )
 from dolfinx.fem import (
     Constant,
@@ -26,36 +27,28 @@ from dolfinx.mesh import MeshTags
 
 import ufl
 
+import basix
+from basix.ufl import element
+
 
 class PoiseuilleProfile():
-    """ poiseuille profile"""
-
-    def __init__(
-        self, 
-        max_vel: float, 
-        radius: float, 
-        center: float,
-        normal: float
-    ):
-        self.max_vel = max_vel 
-        self.radius = radius 
+    def __init__(self, max_vel, radius, center, normal):
+        self.max_vel = max_vel
+        self.radius = radius
         self.center = center
         self.normal = normal
 
-    def calc_distance(self, x):
-        dx = x[0] - self.center[0]
-        dy = x[1] - self.center[1]
-        return np.sqrt(dx**2 + dy**2)
+    def __call__(self, x):
+        dx = x[0, :] - self.center[0]
+        dy = x[1, :] - self.center[1]
+        dist = np.sqrt(dx**2 + dy**2)
+        waveform = self.max_vel * (1 - (dist / self.radius)**2)
+  
+        u = np.zeros((3, x.shape[1]), dtype = default_scalar_type)
+        u[0, :] = waveform * self.normal[0]
+        u[1, :] = waveform * self.normal[1]
 
-    def ux(self, x):
-        dist = self.calc_distance(x)
-        value = 1 - (2 * dist / self.radius - 1)**2
-        return [value * self.normal[0]]
-
-    def uy(self, x):
-        dist = self.calc_distane(x)
-        value = 1 - (2 * dist / self.radius - 1)**2
-        return [value * self.normal[1]]
+        return u
     
 
 def make_velocity_bcu(
@@ -66,23 +59,28 @@ def make_velocity_bcu(
     bcu = []
 
     for tag, type, dir, val in cfg.boundary.dirichlet.velocity:
-        dofs = fem.locate_dofs_topological(
-            V.sub(dir), facet_tags.dim, facet_tags.find(tag)
-        )
-
         if type == "uniform":
+            dofs = fem.locate_dofs_topological(
+                V.sub(dir), facet_tags.dim, facet_tags.find(tag)
+            )
             bc = fem.dirichletbc(val, dofs, V.sub(dir))
             bcu.append(bc)
-
         elif type == "poiseuille":
-            radious, center, normal = cfg.boundary.dirichlet.poiseuille
+            dofs = fem.locate_dofs_topological(
+                V, facet_tags.dim, facet_tags.find(tag)
+            )
+            tmp = cfg.boundary.dirichlet.poiseuille
+            radius = tmp.radius
+            center = tmp.center
+            normal = tmp.normal
+
             prof = PoiseuilleProfile(
-                val, radious, center, normal
+                val, radius, center, normal
             ) 
-            f = fem.Function(V.sub(dir))
+            f = fem.Function(V)
             f.interpolate(prof)
             bc = fem.dirichletbc(f, dofs)
-            bcu.bcu.extend(bc)(bc)
+            bcu.append(bc)
 
         else:
             raise ValueError(f"Unknown BC type: {type}")
