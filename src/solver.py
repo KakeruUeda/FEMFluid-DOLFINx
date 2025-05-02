@@ -31,9 +31,15 @@ import basix
 from basix.ufl import element
 
 
-class PoiseuilleProfile():
-    def __init__(self, max_vel, radius, center, normal):
-        self.max_vel = max_vel
+class PoiseuilleProfile3D():
+    def __init__(
+            self, 
+            vel_ave, 
+            radius, 
+            center, 
+            normal
+        ):
+        self.vel_ave = vel_ave
         self.radius = radius
         self.center = center
         self.normal = normal
@@ -41,8 +47,36 @@ class PoiseuilleProfile():
     def __call__(self, x):
         dx = x[0, :] - self.center[0]
         dy = x[1, :] - self.center[1]
+        dz = x[2, :] - self.center[2]
+        dist = np.sqrt(dx**2 + dy**2 + dz**2)
+        waveform = 2 * self.vel_ave * (1 - (dist / self.radius)**2)
+  
+        u = np.zeros((3, x.shape[1]), dtype = default_scalar_type)
+        u[0, :] = waveform * self.normal[0]
+        u[1, :] = waveform * self.normal[1]
+        u[2, :] = waveform * self.normal[2]
+
+        return u
+    
+class PoiseuilleProfile2D():
+    def __init__(
+            self, 
+            vel_ave, 
+            radius, 
+            center, 
+            normal
+        ):
+        self.vel_ave = vel_ave
+        self.radius = radius
+        self.center = center
+        self.normal = normal
+        self.height = self.radius * 2
+
+    def __call__(self, x):
+        dx = x[0, :] - self.center[0]
+        dy = x[1, :] - self.center[1]
         dist = np.sqrt(dx**2 + dy**2)
-        waveform = self.max_vel * (1 - (dist / self.radius)**2)
+        waveform = (6 * self.vel_ave / self.height**2) * (self.height**2 / 4.0 - dist**2)
   
         u = np.zeros((3, x.shape[1]), dtype = default_scalar_type)
         u[0, :] = waveform * self.normal[0]
@@ -74,7 +108,7 @@ def make_velocity_bcu(
             center = tmp.center
             normal = tmp.normal
 
-            prof = PoiseuilleProfile(
+            prof = PoiseuilleProfile2D(
                 val, radius, center, normal
             ) 
             f = fem.Function(V)

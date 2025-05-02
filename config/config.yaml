@@ -41,7 +41,7 @@ boundary:
 
       # ---- straight tube ----
       - [6, "uniform", 0, 0.0]
-      - [6, "uniform", 1, 1.0]
+      - [6, "poiseuille", 1, 1.0]
       - [7, "uniform", 0, 0.0]
       - [7, "uniform", 1, 0.0]
     poiseuille:

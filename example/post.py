@@ -3,19 +3,18 @@ import numpy as np
 import vtk
 from vtk.util import numpy_support
 
-# === データ読み込み（そのまま）===
-with h5py.File("output/navier_stokes_2025-05-02_02-16-32/velocity.h5", "r") as f:
+
+with h5py.File("output/straight_tube_2025-05-02_07-09-26/velocity.h5", "r") as f:
     velocity_data = f["Function/f/0"][:]  
     points = f["Mesh/mesh/geometry"][:]  
 
 points_2d = points[:, :2]
 velocity_2d = velocity_data[:, :2]
 
-# === グリッド定義 ===
-x_min = -30
-y_min = -30
-x_max = 30.0
-y_max = 30.0
+x_min = 0
+y_min = 0
+x_max = 2
+y_max = 2
 
 Nx, Ny = 20, 20
 
@@ -29,7 +28,6 @@ yc = 0.5 * (y_grid[:-1] + y_grid[1:])
 x_centers, y_centers = np.meshgrid(xc, yc)
 cell_centers = np.column_stack([x_centers.ravel(), y_centers.ravel()])
 
-# === 補間 ===
 from scipy.interpolate import LinearNDInterpolator, RBFInterpolator
 vx_interp = LinearNDInterpolator(points_2d, velocity_2d[:, 0], fill_value=0.0)
 vy_interp = LinearNDInterpolator(points_2d, velocity_2d[:, 1], fill_value=0.0)
@@ -41,31 +39,25 @@ v_interp = np.column_stack([
 
 print("v_interp.shape =", v_interp.shape)
 
-# Z=0 で拡張してベクトル化
 velocity_3d = np.column_stack([v_interp, np.zeros(len(v_interp))])
 velocity_mag = np.linalg.norm(v_interp, axis=1)
 
-# === vtkImageData 作成 ===
 image = vtk.vtkImageData()
 image.SetDimensions(Nx+1, Ny+1, 1)
 image.SetSpacing(dx, dy, 1.0)
 image.SetOrigin(x_min + dx / 2, y_min + dy / 2, 0.0)
 
-# === ベクトルデータを CellData として追加 ===
 vtk_velocity = numpy_support.numpy_to_vtk(velocity_3d, deep=True)
 vtk_velocity.SetName("velocity")
 image.GetCellData().AddArray(vtk_velocity)
 
-# === スカラー（マグニチュード）も CellData に追加 ===
 vtk_vmag = numpy_support.numpy_to_vtk(velocity_mag, deep=True)
 vtk_vmag.SetName("velocity_magnitude")
 image.GetCellData().AddArray(vtk_vmag)
 
-# === .vti ファイルとして保存 ===
 writer = vtk.vtkXMLImageDataWriter()
 writer.SetFileName("velocity_field.vti")
 writer.SetInputData(image)
-writer.SetDataModeToBinary()  # バイナリ出力
+writer.SetDataModeToBinary()  
 writer.Write()
 
-print("✅ velocity_field.vti に保存しました（vtk直接）")
