@@ -90,9 +90,36 @@ def main(cfg: DictConfig) -> None:
     [V, Q] = domain_.define_functionspace(d)
 
     bcu = solver_.make_velocity_bcu(V, d.facet_tags, cfg)
-    # bcp = solver_.make_pressure_anchor(Q, d.msh, cfg)
     bcp = solver_.make_pressure_bcp(Q, d.facet_tags, cfg)
+    # bcp = solver_.make_pressure_anchor(Q, d.msh, cfg)
 
+    # First, we solve the Stokes problem 
+    # for the initial condition
+
+    # -- STOKES EQUATION. --
+    st = solver_.Stokes(
+        V, Q,
+        mu = 1,
+        msh = d.msh,
+        dx = d.dx,
+        bcu = bcu,
+        bcp = bcp
+    )
+
+    st.build_weakform()
+    st.setup_solver_petsc(d.msh)
+    st.solve()
+
+    [ufile, pfile] = io_.open_files_xdfm()
+    [u_vis, p_vis] = io_.get_vars_visu(d)
+
+    ufile.write_mesh(d.msh)
+    pfile.write_mesh(d.msh)
+
+    io_.output_velocity(st.u_, u_vis, ufile, 0)
+    io_.output_pressure(st.p_, p_vis, pfile, 0)
+    
+    # -- NAVIER STOKES EQUATION. --
     ns = solver_.NavierStokes(
         V, Q,
         Re = cfg.fluid.Re,
@@ -102,21 +129,16 @@ def main(cfg: DictConfig) -> None:
         bcu = bcu,
         bcp = bcp
     )
+    
+    ns.u_.x.array[:] = st.u_.x.array[:]
+    ns.p_.x.array[:] = st.p_.x.array[:]
+    ns.u_n.x.array[:] = st.u_.x.array[:]
+    ns.p_n.x.array[:] = st.p_.x.array[:]
 
     ns.build_weakform(d.dx)
     ns.setup_solver_petsc(d.msh)
 
-    [ufile, pfile] = io_.open_files_xdfm()
-    [u_vis, p_vis] = io_.get_vars_visu(d)
-
-    ufile.write_mesh(d.msh)
-    pfile.write_mesh(d.msh)
-
-    io_.output_velocity(ns.u_, u_vis, ufile, 0)
-    io_.output_pressure(ns.p_, p_vis, pfile, 0)
-
     time_now = 0.0
-
     num_steps = np.int32(ns.t_end / ns.dt) + 1
 
     for step in range(1, num_steps + 1):
@@ -125,7 +147,7 @@ def main(cfg: DictConfig) -> None:
         print("\n\n Load step = ", step)
         print("     Time      = ", time_now)
 
-        # solve system of eqs. (projection).
+        # solvet the equations.
         ns.solve_intermidiate()
         ns.solve_poisson()
         ns.solve_correction()

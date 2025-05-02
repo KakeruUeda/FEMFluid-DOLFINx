@@ -11,6 +11,7 @@ from dolfinx import (
     mesh
 )
 from dolfinx.fem import (
+    Constant,
     form, 
     petsc
 )
@@ -136,6 +137,97 @@ def make_pressure_anchor(
 
     return [bc_anchor]
 
+class Stokes():
+    """ N.S. eq. """
+
+    def __init__(
+        self,
+        V: fem.FunctionSpace,
+        Q: fem.FunctionSpace,
+        mu: float,
+        msh: mesh.Mesh,
+        dx,
+        bcu,
+        bcp,
+    ):
+        self.mu = mu
+        self.V, self.Q = V, Q
+        self.bcu, self.bcp = bcu, bcp
+        self.dx = dx
+
+        self.bcs = self.bcu
+
+        self.u, self.v = ufl.TrialFunction(V), ufl.TestFunction(V)
+        self.p, self.q = ufl.TrialFunction(Q), ufl.TestFunction(Q)
+
+        self.u_, self.p_ = fem.Function(V), fem.Function(Q)
+
+        self.f = fem.Constant(msh, (PETSc.ScalarType(0),) * msh.geometry.dim)
+
+    def build_weakform(self):
+        """ projection matrix """
+        self.lhs = form(
+            [
+                [
+                    self.mu * ufl.inner(ufl.grad(self.u), ufl.grad(self.v)) * self.dx, 
+                    - ufl.inner(self.p, ufl.div(self.v)) * self.dx
+                ],
+                [
+                    ufl.inner(ufl.div(self.u), self.q) * self.dx, 
+                    None
+                ]
+            ]
+        )
+        self.rhs = form(
+            [
+                ufl.inner(self.f, self.v) * ufl.dx, 
+                ufl.ZeroBaseForm((self.q,))
+            ]
+        )
+
+        self.A = petsc.assemble_matrix(self.lhs, bcs = self.bcs)
+        self.A.assemble()
+        self.b = assemble_vector(self.rhs, kind = PETSc.Vec.Type.MPI)
+    
+    def setup_solver_petsc(self, msh):
+        """ petsc setting """
+        self.solver = PETSc.KSP().create(msh.comm)
+        self.solver.setOperators(self.A)
+        self.solver.setType("preonly")
+        self.pc = self.solver.getPC()
+        self.pc.setType("lu")
+        use_superlu = PETSc.IntType == np.int64
+        if PETSc.Sys().hasExternalPackage("mumps") and not use_superlu:
+            self.pc.setFactorSolverType("mumps")
+            self.pc.setFactorSetUpSolverType()
+            self.pc.getFactorMatrix().setMumpsIcntl(icntl=24, ival=1)
+            self.pc.getFactorMatrix().setMumpsIcntl(icntl=25, ival=0)
+        else:
+            self.pc.setFactorSolverType("superlu_dist")
+     
+    def solve(self):
+        # Step 1: Temporal veolcity step
+        # assemble_vector(self.b, self.rhs)
+        apply_lifting(self.b, self.lhs, bcs=self.bcs)
+        self.b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+        bcs0 = fem.bcs_by_block(fem.extract_function_spaces(self.lhs), self.bcs)
+        set_bc(self.b, bcs0)
+
+        null_vec = self.A.createVecLeft()
+        offset = self.V.dofmap.index_map.size_local * self.V.dofmap.index_map_bs
+        null_vec.array[offset:] = 1.0
+        null_vec.normalize()
+        nsp = PETSc.NullSpace().create(vectors=[null_vec])
+        # assert nsp.test(self.A)
+        self.A.setNullSpace(nsp)
+        
+        x = self.A.createVecLeft()
+        self.solver.solve(self.b, x)
+        
+        offset = self.V.dofmap.index_map.size_local * self.V.dofmap.index_map_bs
+        self.u_.x.array[:offset] = x.array_r[:offset]
+        self.p_.x.array[: (len(x.array_r) - offset)] = x.array_r[offset:]
+
 
 class NavierStokes():
     """ N.S. eq. """
@@ -167,24 +259,24 @@ class NavierStokes():
         """ projection matrix """
         # Step 1
         self.lhs1 = form(
-            ufl.dot(self.u / self.dt, self.v) * dx
+            ufl.dot(self.u / self.dt, self.v) * self.dx
             + 0.5 * (1.0 / self.Re) 
             * ufl.inner(ufl.grad(self.u), ufl.grad(self.v)) 
-            * dx
+            * self.dx
         )
 
         self.rhs1 = form(
             ufl.dot(
                 self.u_n / self.dt, 
                 self.v
-            ) * dx
+            ) * self.dx
             - ufl.dot(
                 ufl.dot(self.u_n, ufl.nabla_grad(self.u_n)), 
                 self.v
-            ) * dx
+            ) * self.dx
             - 0.5 * (1.0 / self.Re) * 
             ufl.inner(ufl.grad(self.u_n), ufl.grad(self.v)) 
-            * dx
+            * self.dx
         )
 
         self.A1 = petsc.assemble_matrix(self.lhs1, bcs = self.bcu)
