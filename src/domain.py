@@ -55,7 +55,6 @@ class Domain:
         self.msh_info = gmshio.read_from_msh(
             str(msh_path), MPI.COMM_WORLD
         )
-
         self.msh = self.msh_info.mesh
         self.cell_tags = self.msh_info.cell_tags
         self.facet_tags = self.msh_info.facet_tags
@@ -75,6 +74,8 @@ class Domain:
             subdomain_data = self.facet_tags, 
             metadata={'quadrature_degree': 4}
         )
+
+
 
 def define_functionspace(domain):
     V = fem.functionspace(

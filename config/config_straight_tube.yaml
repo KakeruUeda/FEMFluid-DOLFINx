@@ -3,7 +3,7 @@ defaults:
 
 hydra:
   job:
-    name: bend_tube_level0
+    name: straight_tube
   run:
     dir: output/${hydra.job.name}_${now:%Y-%m-%d_%H-%M-%S}
 
@@ -21,26 +21,26 @@ time:
   t_end: 50
 
 mesh:
-  filepath: mesh/bend_tube_level0.msh  # Path to GMSH file
+  filepath: mesh/straight_tube.msh  # Path to GMSH file
   deg_u: 2
   deg_p: 1
 
 boundary:
   dirichlet:
     velocity:  # [tag, type, dir, value]
-      - [19, "poiseuille", 0, 1.0]
-      - [19, "poiseuille", 1, 1.0]
-      - [21, "uniform", 0, 0.0]
-      - [21, "uniform", 1, 0.0]
-      - [22, "uniform", 0, 0.0]
-      - [22, "uniform", 1, 0.0]
+      - [6, "poiseuille", 0, 1.0]
+      - [6, "uniform", 1, 0.0]
+      - [9, "uniform", 0, 0.0]
+      - [9, "uniform", 1, 0.0]
+      - [10, "uniform", 0, 0.0]
+      - [10, "uniform", 1, 0.0]
     poiseuille:
       # if none, don't specify
       radius: 0.5
       center: [-4, 0]
-      normal: [0.9806, 0.1961]
+      normal: [1,  0]
     pressure:
-      - [20, "uniform", 0.0]
+      - [8, "uniform", 0.0]
 
 solver:
   output_interval: 10

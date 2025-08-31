@@ -59,7 +59,6 @@ import ufl
 
 import basix
 from basix.ufl import element
-from hydra.utils import to_absolute_path
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -89,25 +88,29 @@ def main(cfg: DictConfig) -> None:
     [V, Q] = domain_.define_functionspace(d)
 
     bcu = solver_.make_velocity_bcu(V, d.facet_tags, cfg)
-    bcp = solver_.make_pressure_bcp(Q, d.facet_tags, cfg)
+    bcp, p_func = solver_.make_pressure_bcp(Q, d.facet_tags, cfg)
     # bcp = solver_.make_pressure_anchor(Q, d.msh, cfg)
+    # bcp = []
 
     # First, we solve the Stokes problem 
     # for the initial condition
 
-    # -- STOKES EQUATION. --
-    st = solver_.Stokes(
-        V, Q,
-        mu = 1,
-        msh = d.msh,
-        dx = d.dx,
-        bcu = bcu,
-        bcp = bcp
-    )
+    solve_stokes = False
 
-    st.build_weakform()
-    st.setup_solver_petsc(d.msh)
-    st.solve()
+    # -- STOKES EQUATION. --
+    if solve_stokes:
+        st = solver_.Stokes(
+            V, Q,
+            mu = 1,
+            msh = d.msh,
+            dx = d.dx,
+            bcu = bcu,
+            bcp = bcp
+        )
+
+        st.build_weakform()
+        st.setup_solver_petsc(d.msh)
+        st.solve()
 
     [ufile, pfile] = io_.open_files_xdfm()
     [u_vis, p_vis] = io_.get_vars_visu(d)
@@ -115,13 +118,17 @@ def main(cfg: DictConfig) -> None:
     ufile.write_mesh(d.msh)
     pfile.write_mesh(d.msh)
 
-    io_.output_velocity(st.u_, u_vis, ufile, 0)
-    io_.output_pressure(st.p_, p_vis, pfile, 0)
+    if solve_stokes:
+        io_.output_velocity(st.u_, u_vis, ufile, 0)
+        io_.output_pressure(st.p_, p_vis, pfile, 0)
     
     # -- NAVIER STOKES EQUATION. --
     ns = solver_.NavierStokes(
         V, Q,
-        Re = cfg.fluid.Re,
+        U = cfg.fluid.U,
+        L = cfg.fluid.L,
+        rho = cfg.fluid.rho,
+        mu = cfg.fluid.mu,
         t_end = cfg.time.t_end,
         dt = cfg.time.dt,
         dx = d.dx,
@@ -129,10 +136,11 @@ def main(cfg: DictConfig) -> None:
         bcp = bcp
     )
     
-    ns.u_.x.array[:] = st.u_.x.array[:]
-    ns.p_.x.array[:] = st.p_.x.array[:]
-    ns.u_n.x.array[:] = st.u_.x.array[:]
-    ns.p_n.x.array[:] = st.p_.x.array[:]
+    if solve_stokes:
+        ns.u_.x.array[:] = st.u_.x.array[:]
+        ns.p_.x.array[:] = st.p_.x.array[:]
+        ns.u_n.x.array[:] = st.u_.x.array[:]
+        ns.p_n.x.array[:] = st.p_.x.array[:]
 
     ns.build_weakform(d.dx)
     ns.setup_solver_petsc(d.msh)
@@ -145,6 +153,12 @@ def main(cfg: DictConfig) -> None:
 
         print("\n\n Load step = ", step)
         print("     Time      = ", time_now)
+
+        # if step >= 1000:
+        #     time_start = 1000 * ns.dt
+        for f, pulse_func in p_func:
+            pulse_func.set_time(time_now)
+            f.interpolate(pulse_func)
 
         # solve the equations.
         ns.solve_intermidiate()

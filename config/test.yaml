@@ -1,0 +1,89 @@
+defaults:
+  - _self_
+
+hydra:
+  job:
+    name: aneurysm_simple_F12_0.5
+  run:
+    dir: output/${hydra.job.name}_${now:%Y-%m-%d_%H-%M-%S}
+
+base:
+  dim: 2
+
+fluid:
+  Re: 100.0
+
+time:
+  dt: 0.01
+  t_end: 50
+
+mesh:
+  filepath: mesh/aneurysm_simple_p2_F12_0.5.msh  # Path to GMSH file
+  deg_u: 2
+  deg_p: 1
+
+boundary:
+  dirichlet:
+    velocity:  # [tag, type, dir, value]
+      # ---- cavity ----
+      # - [9, "uniform", 0, 1.0]
+      # - [9, "uniform", 1, 0.0]
+      # - [10, "uniform", 0, 0.0]   
+      # - [10, "uniform", 1, 0.0]
+
+      # ---- cylinder ----
+      # - [1, "poiseuille", 0, 1.0]
+      # - [1, "uniform", 1, 0.0]
+      # - [3, "uniform", 1, 0.0]   
+      # - [4, "uniform", 1, 0.0]
+      # - [5, "uniform", 0, 0.0]
+      # - [5, "uniform", 1, 0.0]
+
+      # ---- straight tube ----
+      # - [6, "uniform", 0, 0.0]
+      # - [6, "poiseuille", 1, 1.0]
+      # - [8, "uniform", 0, 0.0]
+      # - [8, "uniform", 1, 0.0]
+
+      # ---- bend tube ----
+      # - [5, "poiseuille", 0, 1.0]
+      # - [5, "uniform", 1, 0.0]
+      # - [7, "uniform", 0, 0.0]
+      # - [7, "uniform", 1, 0.0]
+
+      # ---- aneurysm ----
+      - [9, "uniform", 0, 1.0]
+      - [9, "uniform", 1, 0.0]
+      - [8, "uniform", 0, 0.0]
+      - [8, "uniform", 1, 0.0]
+    poiseuille:
+      # ---- cylinder ----
+      # radius: 10
+      # center: [-10.0, 0.0]
+      # normal: [1.0, 0.0]
+
+      # ---- straight tube ----
+      # radius: 0.5
+      # center: [0.0, 2.5]
+      # normal: [1.0, 0.0]
+
+      #  ---- bend tube ----
+      # radius: 0.5
+      # center: [0.0, 2.5]
+      # normal: [1.0, 0.0]
+    pressure:
+      # ---- cylinder ----
+      # - [2, 0.0]
+
+      # ---- straight tube ----
+      # - [7, 0.0]
+
+      # ---- bend tube ----
+      # - [6, 0.0]
+
+      # ---- aneutysm ----
+      - [11, 0.0]
+
+solver:
+  output_interval: 10
+

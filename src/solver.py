@@ -64,12 +64,14 @@ class PoiseuilleProfile2D():
             vel_ave, 
             radius, 
             center, 
-            normal
+            normal,
+            dir
         ):
         self.vel_ave = vel_ave
         self.radius = radius
         self.center = center
         self.normal = normal
+        self.dir = dir
         self.height = self.radius * 2
 
     def __call__(self, x):
@@ -83,7 +85,50 @@ class PoiseuilleProfile2D():
         u[1, :] = waveform * self.normal[1]
 
         return u
-    
+
+class PulsatileFlow:
+    def __init__(self, A, omega, phase=0.0):
+        self.A = A
+        self.omega = omega
+        self.phase = phase
+        self.t = 0.0 
+
+    def set_time(self, t):
+        self.t = t
+
+    def __call__(self, x):
+        return np.full(
+            x.shape[1], 
+            self.A * np.sin(self.omega * self.t + self.phase), 
+            dtype=default_scalar_type
+        )
+
+
+class WomersleyFlow:
+    def __init__(self, A, Wo, R, nu, C, phase=0.0):
+        self.A = A
+        self.Wo = Wo
+        self.R = R
+        self.nu = nu
+        self.C = C
+        self.phase = phase
+        self.t = 0.0
+
+        self.omega = (self.Wo / self.R) ** 2 * self.nu
+        self.T = 2 * np.pi / self.omega
+
+        print(self.T)
+        exit(0)
+
+    def set_time(self, t):
+        self.t = t
+
+    def __call__(self, x):
+        return np.full(
+            x.shape[1], 
+            self.A * np.cos(self.omega * self.t + self.phase) + self.C, 
+            dtype=default_scalar_type
+        )
 
 def make_velocity_bcu(
     V: fem.FunctionSpace,
@@ -107,9 +152,8 @@ def make_velocity_bcu(
             radius = tmp.radius
             center = tmp.center
             normal = tmp.normal
-
             prof = PoiseuilleProfile2D(
-                val, radius, center, normal
+                val, radius, center, normal, dir
             ) 
             f = fem.Function(V)
             f.interpolate(prof)
@@ -127,27 +171,49 @@ def make_pressure_bcp(
     cfg
 ):  
     bcp = []
+    pressure_funcs = []
 
-    for tag, val in cfg.boundary.dirichlet.pressure:
+    for tag, type, val in cfg.boundary.dirichlet.pressure:
         dofs = fem.locate_dofs_topological(
             Q, facet_tags.dim, facet_tags.find(tag)
         )
+        if type == "uniform":
+            bc = fem.dirichletbc(val, dofs, V=Q)
+            bcp.append(bc)
+        elif type == "pulsatile":
+            nu = cfg.fluid.mu / cfg.fluid.rho  
+            pulse_func = WomersleyFlow(
+                A=5.0, Wo=15, 
+                R=0.5, nu=nu,
+                C=0.5
+            )
+            f = fem.Function(Q)
+            f.interpolate(pulse_func)
+            bc = fem.dirichletbc(f, dofs)
+            bcp.append(bc)
+            pressure_funcs.append((f, pulse_func)) 
 
-        bc = fem.dirichletbc(val, dofs, V=Q)
-        bcp.append(bc)
-
-    return bcp
+    return bcp, pressure_funcs
 
 def make_pressure_anchor(
     Q: fem.FunctionSpace,
     msh: mesh.Mesh,
     cfg
 ):
-    tag, value = cfg.boundary.dirichlet.pressure[0]
+    # tag, value = cfg.boundary.dirichlet.pressure[0]
 
-        
+    msh.topology.create_connectivity(0, msh.topology.dim)
+    
+    x = msh.geometry.x
+
+    anchor_point = x[0]
+    print(anchor_point[0])
+
     def near_anchor_point(x):
-        return np.isclose(x[0], 0) & np.isclose(x[1], 0)
+        return (
+            np.isclose(x[0], anchor_point[0], atol=1e-2) &
+            np.isclose(x[1], anchor_point[1], atol=1e-2)
+        )
         
     anchor_vertices = mesh.locate_entities(
         msh, 
@@ -162,13 +228,13 @@ def make_pressure_anchor(
     )
             
     bc_anchor = fem.dirichletbc(
-        value = value, 
+        value = 0e0, 
         dofs = dofs_anchor, 
         V = Q
     )
 
     return [bc_anchor]
-
+    
 class Stokes():
     """ N.S. eq. """
 
@@ -186,8 +252,9 @@ class Stokes():
         self.V, self.Q = V, Q
         self.bcu, self.bcp = bcu, bcp
         self.dx = dx
+        self.msh = msh
 
-        self.bcs = self.bcu
+        self.bcs = self.bcu + self.bcp
 
         self.u, self.v = ufl.TrialFunction(V), ufl.TestFunction(V)
         self.p, self.q = ufl.TrialFunction(Q), ufl.TestFunction(Q)
@@ -268,18 +335,28 @@ class NavierStokes():
         self,
         V: fem.FunctionSpace,
         Q: fem.FunctionSpace,
-        Re: float,
+        U: float,
+        L: float,
+        rho: float,
+        mu: float,
         t_end: float,
         dt: float,
         dx,
         bcu,
         bcp,
     ):
-        self.dt, self.Re = dt, Re
+        self.U = U
+        self.L = L
+        self.rho = rho
+        self.mu = mu
+        self.dt = dt
         self.t_end = t_end
         self.V, self.Q = V, Q
         self.bcu, self.bcp = bcu, bcp
         self.dx = dx
+
+        self.nu = self.mu / self.rho
+        self.Re = self.U * self.L / self.nu
 
         self.u, self.v = ufl.TrialFunction(V), ufl.TestFunction(V)
         self.p, self.q = ufl.TrialFunction(Q), ufl.TestFunction(Q)
@@ -391,6 +468,7 @@ class NavierStokes():
             mode = PETSc.ScatterMode.REVERSE
         )
         set_bc(self.b2, self.bcp)
+
         self.solver2.solve(self.b2, self.p_.x.petsc_vec)
         self.p_.x.scatter_forward()
 
